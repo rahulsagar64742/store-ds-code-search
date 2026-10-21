@@ -6,61 +6,46 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Store & DS Code Search</title>
   <style>
-    body {
-      margin: 0;
-      padding: 20px;
-      font-family: Arial, sans-serif;
-      background: #f2f5fa;
-      color: #172033;
-    }
-    main {
-      max-width: 650px;
-      margin: 20px auto;
-      padding: 22px;
-      background: white;
-      border-radius: 12px;
-    }
-    h2 { text-align: center; }
-    input, button {
-      box-sizing: border-box;
-      width: 100%;
-      padding: 13px;
-      margin: 8px 0;
-      font-size: 16px;
-      border-radius: 7px;
-    }
-    input { border: 1px solid #bbb; }
-    button {
-      background: #1769e0;
-      color: white;
-      border: 0;
-      cursor: pointer;
-    }
-    .result {
-      background: #f5f8ff;
-      padding: 14px;
-      border-radius: 8px;
-      margin-top: 12px;
-      overflow-wrap: anywhere;
-    }
-    #status { color: #555; }
-    #qr { margin-top: 10px; }
+    body { margin:0; padding:16px; font-family:Arial,sans-serif; background:#f2f5fa; color:#172033; }
+    main { max-width:680px; margin:16px auto; padding:20px; background:white; border-radius:12px; }
+    h2 { text-align:center; }
+    input,button { box-sizing:border-box; width:100%; padding:12px; margin:7px 0; font-size:16px; border-radius:7px; }
+    input { border:1px solid #bbb; }
+    button { background:#1769e0; color:white; border:0; cursor:pointer; }
+    hr { margin:24px 0; border:0; border-top:1px solid #ddd; }
+    .result { background:#f5f8ff; padding:14px; border-radius:8px; margin-top:12px; overflow-wrap:anywhere; }
+    .status { color:#555; overflow-wrap:anywhere; }
+    #admin { background:#fafafa; padding:14px; border:1px solid #ddd; border-radius:8px; }
   </style>
 </head>
 <body>
 <main>
   <h2>Store & DS Code Search</h2>
   <p>Search by Store Name, DS Code or DS ID</p>
-
-  <input id="searchInput"
-    placeholder="Enter Store Name, DS Code or DS ID">
-
+  <input id="searchInput" placeholder="Enter Store Name, DS Code or DS ID">
   <button id="searchButton">Search</button>
-  <p id="status">Connecting to database...</p>
+  <p id="status" class="status">Connecting to database...</p>
   <div id="results"></div>
+
+  <hr>
+  <section id="admin">
+    <h3>Admin — Master Data Upload</h3>
+    <p>Admin login is required to upload the CSV file.</p>
+    <input id="adminEmail" type="email" placeholder="Admin email">
+    <input id="adminPassword" type="password" placeholder="Admin password">
+    <button id="loginButton">Admin Login</button>
+    <button id="logoutButton" hidden>Logout</button>
+    <p id="adminStatus" class="status">Not logged in</p>
+    <hr>
+    <label for="csvFile">Choose store_master.csv</label>
+    <input id="csvFile" type="file" accept=".csv,text/csv" disabled>
+    <button id="uploadButton" disabled>Upload Master Data</button>
+    <p id="uploadStatus" class="status"></p>
+  </section>
 </main>
 
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 <script src="public/firebase-config.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -69,25 +54,80 @@
   const statusBox = document.getElementById("status");
   const resultsBox = document.getElementById("results");
   const searchInput = document.getElementById("searchInput");
+  const adminStatus = document.getElementById("adminStatus");
+  const uploadStatus = document.getElementById("uploadStatus");
+  const csvFile = document.getElementById("csvFile");
+  const uploadButton = document.getElementById("uploadButton");
   let stores = [];
+  let db;
+  let auth;
 
-  try {
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.firestore();
+  function normalizeHeader(value) {
+    return String(value || "").trim().toLowerCase()
+      .replace(/[\s_-]+/g, "");
+  }
 
-    db.collection("store_master").get()
-      .then(snapshot => {
-        stores = snapshot.docs.map(doc => doc.data());
-        statusBox.textContent =
-          "Database connected. Records loaded: " + stores.length;
-      })
-      .catch(error => {
-        statusBox.textContent =
-          "Database error: " + error.message;
-      });
-  } catch (error) {
-    statusBox.textContent =
-      "Firebase setup error: " + error.message;
+  function parseCSV(text) {
+    const rows = [];
+    let row = [], field = "", quoted = false;
+    text = text.replace(/^\uFEFF/, "");
+
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (c === '"') {
+        if (quoted && text[i + 1] === '"') {
+          field += '"';
+          i++;
+        } else {
+          quoted = !quoted;
+        }
+      } else if (c === "," && !quoted) {
+        row.push(field);
+        field = "";
+      } else if ((c === "\n" || c === "\r") && !quoted) {
+        if (c === "\r" && text[i + 1] === "\n") i++;
+        row.push(field);
+        if (row.some(v => v.trim() !== "")) rows.push(row);
+        row = [];
+        field = "";
+      } else {
+        field += c;
+      }
+    }
+    row.push(field);
+    if (row.some(v => v.trim() !== "")) rows.push(row);
+    return rows;
+  }
+
+  function mapHeader(headers, aliases) {
+    return headers.findIndex(h => aliases.includes(normalizeHeader(h)));
+  }
+
+  function mapRecord(headers, row) {
+    const value = aliases => {
+      const i = mapHeader(headers, aliases);
+      return i < 0 ? "" : String(row[i] ?? "").trim();
+    };
+
+    return {
+      ds_id: value(["dsid", "storeid"]),
+      store_name: value(["storename", "storename"]),
+      ds_Code: value(["dscode", "storecode", "dscode"]),
+      bay: value(["bay"]),
+      picking_shift: value(["pickingshift", "shift"]),
+      new_xd_remark: value(["newxdremark", "remark", "remarks"]),
+      pallet_id: value(["palletid"])
+    };
+  }
+
+  async function loadStores() {
+    try {
+      const snapshot = await db.collection("store_master").get();
+      stores = snapshot.docs.map(doc => doc.data());
+      statusBox.textContent = "Database connected. Records loaded: " + stores.length;
+    } catch (e) {
+      statusBox.textContent = "Database error: " + e.message;
+    }
   }
 
   function searchStore() {
@@ -101,7 +141,7 @@
 
     const matches = stores.filter(store =>
       [store.store_name, store.ds_Code, store.ds_id]
-        .some(value => String(value || "").toLowerCase().includes(query))
+        .some(v => String(v || "").toLowerCase().includes(query))
     );
 
     if (!matches.length) {
@@ -111,32 +151,30 @@
 
     statusBox.textContent = "Matching records: " + matches.length;
 
-    matches.forEach(store => {
+    matches.forEach((store, index) => {
       const card = document.createElement("div");
       card.className = "result";
 
-      const fields = [
+      [
         ["DS Code", store.ds_Code],
         ["DS ID", store.ds_id],
         ["Bay", store.bay],
         ["Picking Shift", store.picking_shift],
         ["Pallet ID", store.pallet_id],
         ["Remark", store.new_xd_remark]
-      ];
-
-      fields.forEach(([label, value]) => {
+      ].forEach(([label, value]) => {
         if (value !== undefined && value !== null && value !== "") {
-          const line = document.createElement("p");
-          const strong = document.createElement("strong");
-          strong.textContent = label + ": ";
-          line.append(strong, document.createTextNode(String(value)));
-          card.appendChild(line);
+          const p = document.createElement("p");
+          const b = document.createElement("strong");
+          b.textContent = label + ": ";
+          p.append(b, document.createTextNode(String(value)));
+          card.appendChild(p);
         }
       });
 
       if (store.pallet_id) {
         const qr = document.createElement("div");
-        qr.id = "qr-" + Math.random().toString(36).slice(2);
+        qr.id = "qr-" + index;
         card.appendChild(qr);
         new QRCode(qr, {
           text: String(store.pallet_id),
@@ -144,17 +182,128 @@
           height: 150
         });
       }
-
       resultsBox.appendChild(card);
     });
   }
 
-  document.getElementById("searchButton")
-    .addEventListener("click", searchStore);
-
-  searchInput.addEventListener("keydown", event => {
-    if (event.key === "Enter") searchStore();
+  document.getElementById("searchButton").addEventListener("click", searchStore);
+  searchInput.addEventListener("keydown", e => {
+    if (e.key === "Enter") searchStore();
   });
+
+  function setAdminUI(user) {
+    const isLoggedIn = !!user;
+    adminStatus.textContent = isLoggedIn
+      ? "Logged in as " + user.email
+      : "Not logged in";
+    document.getElementById("loginButton").hidden = isLoggedIn;
+    document.getElementById("logoutButton").hidden = !isLoggedIn;
+    document.getElementById("adminEmail").disabled = isLoggedIn;
+    document.getElementById("adminPassword").disabled = isLoggedIn;
+    csvFile.disabled = !isLoggedIn;
+    uploadButton.disabled = !isLoggedIn;
+  }
+
+  document.getElementById("loginButton").addEventListener("click", async () => {
+    const email = document.getElementById("adminEmail").value.trim();
+    const password = document.getElementById("adminPassword").value;
+    adminStatus.textContent = "Signing in...";
+
+    try {
+      await auth.signInWithEmailAndPassword(email, password);
+    } catch (e) {
+      adminStatus.textContent = "Login failed: " + e.message;
+    }
+  });
+
+  document.getElementById("logoutButton").addEventListener("click", () => auth.signOut());
+
+  csvFile.addEventListener("change", () => {
+    uploadStatus.textContent = csvFile.files.length
+      ? "Selected: " + csvFile.files[0].name
+      : "";
+  });
+
+  uploadButton.addEventListener("click", async () => {
+    const user = auth.currentUser;
+    const file = csvFile.files[0];
+
+    if (!user) {
+      uploadStatus.textContent = "Please log in as admin first.";
+      return;
+    }
+    if (!file) {
+      uploadStatus.textContent = "Please select the CSV file first.";
+      return;
+    }
+
+    uploadButton.disabled = true;
+    uploadStatus.textContent = "Reading CSV...";
+
+    try {
+      const rows = parseCSV(await file.text());
+      if (rows.length < 2) throw new Error("CSV has no data rows.");
+
+      const headers = rows[0];
+      const records = rows.slice(1)
+        .map(row => mapRecord(headers, row))
+        .filter(r => r.ds_id || r.ds_Code || r.store_name);
+
+      if (!records.length) {
+        throw new Error("No records found. Please check your CSV column headings.");
+      }
+
+      const missingId = records.find(r => !r.ds_id);
+      if (missingId) {
+        throw new Error("A record has no DS ID. Add a DS ID to every row before uploading.");
+      }
+
+      // Stop if the CSV repeats a DS ID, to avoid silently overwriting records.
+      const ids = records.map(r => r.ds_id);
+      if (new Set(ids).size !== ids.length) {
+        throw new Error("Duplicate DS ID found in CSV. Fix duplicates before uploading.");
+      }
+
+      const confirmed = confirm(
+        "Upload " + records.length + " records to Firebase? Existing records with the same DS ID will be updated."
+      );
+      if (!confirmed) {
+        uploadStatus.textContent = "Upload cancelled.";
+        return;
+      }
+
+      // Batch writes are limited to 500 operations. Use 400 per batch.
+      for (let start = 0; start < records.length; start += 400) {
+        const batch = db.batch();
+        records.slice(start, start + 400).forEach(record => {
+          const ref = db.collection("store_master").doc(record.ds_id);
+          batch.set(ref, record);
+        });
+        await batch.commit();
+        uploadStatus.textContent =
+          "Uploaded " + Math.min(start + 400, records.length) +
+          " of " + records.length + " records...";
+      }
+
+      await loadStores();
+      uploadStatus.textContent = "Upload complete: " + records.length + " records processed.";
+      csvFile.value = "";
+    } catch (e) {
+      uploadStatus.textContent = "Upload failed: " + e.message;
+    } finally {
+      uploadButton.disabled = !auth.currentUser;
+    }
+  });
+
+  try {
+    firebase.initializeApp(firebaseConfig);
+    db = firebase.firestore();
+    auth = firebase.auth();
+    auth.onAuthStateChanged(setAdminUI);
+    loadStores();
+  } catch (e) {
+    statusBox.textContent = "Firebase setup error: " + e.message;
+  }
 </script>
 </body>
 </html>
