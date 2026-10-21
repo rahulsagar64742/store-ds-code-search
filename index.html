@@ -1,0 +1,160 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Store & DS Code Search</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 20px;
+      font-family: Arial, sans-serif;
+      background: #f2f5fa;
+      color: #172033;
+    }
+    main {
+      max-width: 650px;
+      margin: 20px auto;
+      padding: 22px;
+      background: white;
+      border-radius: 12px;
+    }
+    h2 { text-align: center; }
+    input, button {
+      box-sizing: border-box;
+      width: 100%;
+      padding: 13px;
+      margin: 8px 0;
+      font-size: 16px;
+      border-radius: 7px;
+    }
+    input { border: 1px solid #bbb; }
+    button {
+      background: #1769e0;
+      color: white;
+      border: 0;
+      cursor: pointer;
+    }
+    .result {
+      background: #f5f8ff;
+      padding: 14px;
+      border-radius: 8px;
+      margin-top: 12px;
+      overflow-wrap: anywhere;
+    }
+    #status { color: #555; }
+    #qr { margin-top: 10px; }
+  </style>
+</head>
+<body>
+<main>
+  <h2>Store & DS Code Search</h2>
+  <p>Search by Store Name, DS Code or DS ID</p>
+
+  <input id="searchInput"
+    placeholder="Enter Store Name, DS Code or DS ID">
+
+  <button id="searchButton">Search</button>
+  <p id="status">Connecting to database...</p>
+  <div id="results"></div>
+</main>
+
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<script src="public/firebase-config.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+<script>
+  const statusBox = document.getElementById("status");
+  const resultsBox = document.getElementById("results");
+  const searchInput = document.getElementById("searchInput");
+  let stores = [];
+
+  try {
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    db.collection("store_master").get()
+      .then(snapshot => {
+        stores = snapshot.docs.map(doc => doc.data());
+        statusBox.textContent =
+          "Database connected. Records loaded: " + stores.length;
+      })
+      .catch(error => {
+        statusBox.textContent =
+          "Database error: " + error.message;
+      });
+  } catch (error) {
+    statusBox.textContent =
+      "Firebase setup error: " + error.message;
+  }
+
+  function searchStore() {
+    const query = searchInput.value.trim().toLowerCase();
+    resultsBox.replaceChildren();
+
+    if (!query) {
+      statusBox.textContent = "Please enter a search value.";
+      return;
+    }
+
+    const matches = stores.filter(store =>
+      [store.store_name, store.ds_Code, store.ds_id]
+        .some(value => String(value || "").toLowerCase().includes(query))
+    );
+
+    if (!matches.length) {
+      statusBox.textContent = "No matching record found.";
+      return;
+    }
+
+    statusBox.textContent = "Matching records: " + matches.length;
+
+    matches.forEach(store => {
+      const card = document.createElement("div");
+      card.className = "result";
+
+      const fields = [
+        ["DS Code", store.ds_Code],
+        ["DS ID", store.ds_id],
+        ["Bay", store.bay],
+        ["Picking Shift", store.picking_shift],
+        ["Pallet ID", store.pallet_id],
+        ["Remark", store.new_xd_remark]
+      ];
+
+      fields.forEach(([label, value]) => {
+        if (value !== undefined && value !== null && value !== "") {
+          const line = document.createElement("p");
+          const strong = document.createElement("strong");
+          strong.textContent = label + ": ";
+          line.append(strong, document.createTextNode(String(value)));
+          card.appendChild(line);
+        }
+      });
+
+      if (store.pallet_id) {
+        const qr = document.createElement("div");
+        qr.id = "qr-" + Math.random().toString(36).slice(2);
+        card.appendChild(qr);
+        new QRCode(qr, {
+          text: String(store.pallet_id),
+          width: 150,
+          height: 150
+        });
+      }
+
+      resultsBox.appendChild(card);
+    });
+  }
+
+  document.getElementById("searchButton")
+    .addEventListener("click", searchStore);
+
+  searchInput.addEventListener("keydown", event => {
+    if (event.key === "Enter") searchStore();
+  });
+</script>
+</body>
+</html>
