@@ -257,15 +257,8 @@
       if (missingId) {
         throw new Error("A record has no DS ID. Add a DS ID to every row before uploading.");
       }
-
-      // Stop if the CSV repeats a DS ID, to avoid silently overwriting records.
-      const ids = records.map(r => r.ds_id);
-      if (new Set(ids).size !== ids.length) {
-        throw new Error("Duplicate DS ID found in CSV. Fix duplicates before uploading.");
-      }
-
       const confirmed = confirm(
-        "Upload " + records.length + " records to Firebase? Existing records with the same DS ID will be updated."
+        "Upload " + records.length + " records to Firebase? All rows will be stored separately. Keep the same CSV row order when uploading updates."
       );
       if (!confirmed) {
         uploadStatus.textContent = "Upload cancelled.";
@@ -275,8 +268,8 @@
       // Batch writes are limited to 500 operations. Use 400 per batch.
       for (let start = 0; start < records.length; start += 400) {
         const batch = db.batch();
-        records.slice(start, start + 400).forEach(record => {
-          const ref = db.collection("store_master").doc(record.ds_id);
+        records.slice(start, start + 400).forEach((record, index) => {
+          const ref = db.collection("store_master").doc("csv_" + (start + index));
           batch.set(ref, record);
         });
         await batch.commit();
