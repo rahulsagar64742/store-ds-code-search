@@ -1,4 +1,3 @@
-```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -140,22 +139,26 @@
   <button type="button" id="adminToggle">Admin Login</button>
 
   <div id="adminPanel" hidden>
-    <input id="adminEmail" type="email" placeholder="Admin email">
-    <input id="adminPassword" type="password" placeholder="Admin password">
+    <input id="adminEmail" type="email" placeholder="Admin email" autocomplete="username">
+    <input id="adminPassword" type="password" placeholder="Admin password" autocomplete="current-password">
 
     <button type="button" id="loginButton">Login</button>
+    <p id="adminStatus" class="status">Not logged in</p>
 
     <div id="adminControls" hidden>
-      <p id="adminStatus" class="status">Not logged in</p>
       <button type="button" id="logoutButton">Logout</button>
 
       <hr>
 
-      <label for="csvFile">Choose store_master.csv</label>
-      <input id="csvFile" type="file" accept=".csv,text/csv" disabled>
+      <button type="button" id="updateMasterToggle">Update Master Data</button>
 
-      <button type="button" id="uploadButton" disabled>Upload Master Data</button>
-      <p id="uploadStatus" class="status"></p>
+      <div id="uploadPanel" hidden>
+        <label for="csvFile">Choose store_master.csv</label>
+        <input id="csvFile" type="file" accept=".csv,text/csv" disabled>
+
+        <button type="button" id="uploadButton" disabled>Upload Master Data</button>
+        <p id="uploadStatus" class="status"></p>
+      </div>
     </div>
   </div>
 </section>
@@ -233,12 +236,9 @@
       ds_id: value(["dsid", "storeid"]),
       store_name: value(["storename", "dsname"]),
       ds_Code: value(["dscode", "storecode"]),
-new_xd_remark: value(["newxdremarks"]),
       bay: value(["bay"]),
       picking_shift: value(["pickingshift", "shift"]),
-      new_xd_remark: value([
-  "newxdremarks"
-]),
+      new_xd_remark: value(["newxdremarks"]),
       pallet_id: value(["palletid"])
     };
   }
@@ -348,36 +348,41 @@ new_xd_remark: value(["newxdremarks"]),
 function setAdminUI(user) {
   const isLoggedIn = !!user;
 
-  const adminPanel = document.getElementById("adminPanel");
-  const adminControls = document.getElementById("adminControls");
-  const adminToggle = document.getElementById("adminToggle");
-  const loginButton = document.getElementById("loginButton");
-
   adminStatus.textContent = isLoggedIn
     ? "Logged in as " + user.email
     : "Not logged in";
 
-  loginButton.hidden = isLoggedIn;
+  document.getElementById("loginButton").hidden = isLoggedIn;
   document.getElementById("logoutButton").hidden = !isLoggedIn;
-
   document.getElementById("adminEmail").hidden = isLoggedIn;
   document.getElementById("adminPassword").hidden = isLoggedIn;
 
-  adminControls.hidden = !isLoggedIn;
+  document.getElementById("adminControls").hidden = !isLoggedIn;
+
+  // Always close the upload panel when the login state changes.
+  document.getElementById("uploadPanel").hidden = true;
 
   csvFile.disabled = !isLoggedIn;
   uploadButton.disabled = !isLoggedIn;
 
-  adminToggle.textContent = isLoggedIn
+  document.getElementById("adminToggle").textContent = isLoggedIn
     ? "Admin — Master Data Upload"
     : "Admin Login";
+
+  document.getElementById("updateMasterToggle").textContent = "Update Master Data";
 }
 
 const adminToggle = document.getElementById("adminToggle");
 const adminPanel = document.getElementById("adminPanel");
+const updateMasterToggle = document.getElementById("updateMasterToggle");
+const uploadPanel = document.getElementById("uploadPanel");
 
 adminToggle.addEventListener("click", function () {
   adminPanel.hidden = !adminPanel.hidden;
+});
+
+updateMasterToggle.addEventListener("click", function () {
+  uploadPanel.hidden = !uploadPanel.hidden;
 });
   document.getElementById("loginButton")
     .addEventListener("click", async () => {
@@ -492,4 +497,3 @@ adminToggle.addEventListener("click", function () {
 </script>
 </body>
 </html>
-```
