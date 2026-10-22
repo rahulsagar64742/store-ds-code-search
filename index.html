@@ -344,21 +344,41 @@ new_xd_remark: value(["newxdremarks"]),
     if (e.key === "Enter") searchStore();
   });
 
-  function setAdminUI(user) {
-    const isLoggedIn = !!user;
+  
+function setAdminUI(user) {
+  const isLoggedIn = !!user;
 
-    adminStatus.textContent = isLoggedIn
-      ? "Logged in as " + user.email
-      : "Not logged in";
+  const adminPanel = document.getElementById("adminPanel");
+  const adminControls = document.getElementById("adminControls");
+  const adminToggle = document.getElementById("adminToggle");
+  const loginButton = document.getElementById("loginButton");
 
-    document.getElementById("loginButton").hidden = isLoggedIn;
-    document.getElementById("logoutButton").hidden = !isLoggedIn;
-    document.getElementById("adminEmail").disabled = isLoggedIn;
-    document.getElementById("adminPassword").disabled = isLoggedIn;
-    csvFile.disabled = !isLoggedIn;
-    uploadButton.disabled = !isLoggedIn;
-  }
+  adminStatus.textContent = isLoggedIn
+    ? "Logged in as " + user.email
+    : "Not logged in";
 
+  loginButton.hidden = isLoggedIn;
+  document.getElementById("logoutButton").hidden = !isLoggedIn;
+
+  document.getElementById("adminEmail").hidden = isLoggedIn;
+  document.getElementById("adminPassword").hidden = isLoggedIn;
+
+  adminControls.hidden = !isLoggedIn;
+
+  csvFile.disabled = !isLoggedIn;
+  uploadButton.disabled = !isLoggedIn;
+
+  adminToggle.textContent = isLoggedIn
+    ? "Admin — Master Data Upload"
+    : "Admin Login";
+}
+
+const adminToggle = document.getElementById("adminToggle");
+const adminPanel = document.getElementById("adminPanel");
+
+adminToggle.addEventListener("click", function () {
+  adminPanel.hidden = !adminPanel.hidden;
+});
   document.getElementById("loginButton")
     .addEventListener("click", async () => {
       const email = document.getElementById("adminEmail").value.trim();
