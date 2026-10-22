@@ -135,26 +135,30 @@
 
   <hr>
 
-  <section id="admin">
-    <h3>Admin — Master Data Upload</h3>
-    <p>Admin login is required to upload the CSV file.</p>
+  
+<section id="admin">
+  <button type="button" id="adminToggle">Admin Login</button>
 
+  <div id="adminPanel" hidden>
     <input id="adminEmail" type="email" placeholder="Admin email">
     <input id="adminPassword" type="password" placeholder="Admin password">
 
-    <button id="loginButton">Admin Login</button>
-    <button id="logoutButton" hidden>Logout</button>
+    <button type="button" id="loginButton">Login</button>
 
-    <p id="adminStatus" class="status">Not logged in</p>
+    <div id="adminControls" hidden>
+      <p id="adminStatus" class="status">Not logged in</p>
+      <button type="button" id="logoutButton">Logout</button>
 
-    <hr>
+      <hr>
 
-    <label for="csvFile">Choose store_master.csv</label>
-    <input id="csvFile" type="file" accept=".csv,text/csv" disabled>
+      <label for="csvFile">Choose store_master.csv</label>
+      <input id="csvFile" type="file" accept=".csv,text/csv" disabled>
 
-    <button id="uploadButton" disabled>Upload Master Data</button>
-    <p id="uploadStatus" class="status"></p>
-  </section>
+      <button type="button" id="uploadButton" disabled>Upload Master Data</button>
+      <p id="uploadStatus" class="status"></p>
+    </div>
+  </div>
+</section>
 </main>
 
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
