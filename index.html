@@ -1,4 +1,4 @@
-
+```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -21,8 +21,8 @@
 <body>
 <main>
   <h2>Store & DS Code Search</h2>
-  <p>Search by Store Name, DS Code or DS ID</p>
-  <input id="searchInput" placeholder="Enter Store Name, DS Code or DS ID">
+  <p>Search by Store Name, DS Code, DS ID or DS Name</p>
+  <input id="searchInput" placeholder="Enter Store Name, DS Code, DS ID or DS Name">
   <button id="searchButton">Search</button>
   <p id="status" class="status">Connecting to database...</p>
   <div id="results"></div>
@@ -58,6 +58,7 @@
   const uploadStatus = document.getElementById("uploadStatus");
   const csvFile = document.getElementById("csvFile");
   const uploadButton = document.getElementById("uploadButton");
+
   let stores = [];
   let db;
   let auth;
@@ -74,6 +75,7 @@
 
     for (let i = 0; i < text.length; i++) {
       const c = text[i];
+
       if (c === '"') {
         if (quoted && text[i + 1] === '"') {
           field += '"';
@@ -94,6 +96,7 @@
         field += c;
       }
     }
+
     row.push(field);
     if (row.some(v => v.trim() !== "")) rows.push(row);
     return rows;
@@ -111,8 +114,9 @@
 
     return {
       ds_id: value(["dsid", "storeid"]),
-      store_name: value(["storename", "storename"]),
-      ds_Code: value(["dscode", "storecode", "dscode"]),
+      ds_name: value(["dsname", "dsfullname", "nameofds"]),
+      store_name: value(["storename"]),
+      ds_Code: value(["dscode", "storecode"]),
       bay: value(["bay"]),
       picking_shift: value(["pickingshift", "shift"]),
       new_xd_remark: value(["newxdremark", "remark", "remarks"]),
@@ -124,7 +128,8 @@
     try {
       const snapshot = await db.collection("store_master").get();
       stores = snapshot.docs.map(doc => doc.data());
-      statusBox.textContent = "Database connected. Records loaded: " + stores.length;
+      statusBox.textContent =
+        "Database connected. Records loaded: " + stores.length;
     } catch (e) {
       statusBox.textContent = "Database error: " + e.message;
     }
@@ -140,8 +145,12 @@
     }
 
     const matches = stores.filter(store =>
-      [store.store_name, store.ds_Code, store.ds_id]
-        .some(v => String(v || "").toLowerCase().includes(query))
+      [
+        store.store_name,
+        store.ds_Code,
+        store.ds_id,
+        store.ds_name
+      ].some(v => String(v || "").toLowerCase().includes(query))
     );
 
     if (!matches.length) {
@@ -158,6 +167,7 @@
       [
         ["DS Code", store.ds_Code],
         ["DS ID", store.ds_id],
+        ["DS Name", store.ds_name],
         ["Bay", store.bay],
         ["Picking Shift", store.picking_shift],
         ["Pallet ID", store.pallet_id],
@@ -176,26 +186,32 @@
         const qr = document.createElement("div");
         qr.id = "qr-" + index;
         card.appendChild(qr);
+
         new QRCode(qr, {
           text: String(store.pallet_id),
           width: 150,
           height: 150
         });
       }
+
       resultsBox.appendChild(card);
     });
   }
 
-  document.getElementById("searchButton").addEventListener("click", searchStore);
+  document.getElementById("searchButton")
+    .addEventListener("click", searchStore);
+
   searchInput.addEventListener("keydown", e => {
     if (e.key === "Enter") searchStore();
   });
 
   function setAdminUI(user) {
     const isLoggedIn = !!user;
+
     adminStatus.textContent = isLoggedIn
       ? "Logged in as " + user.email
       : "Not logged in";
+
     document.getElementById("loginButton").hidden = isLoggedIn;
     document.getElementById("logoutButton").hidden = !isLoggedIn;
     document.getElementById("adminEmail").disabled = isLoggedIn;
@@ -204,19 +220,22 @@
     uploadButton.disabled = !isLoggedIn;
   }
 
-  document.getElementById("loginButton").addEventListener("click", async () => {
-    const email = document.getElementById("adminEmail").value.trim();
-    const password = document.getElementById("adminPassword").value;
-    adminStatus.textContent = "Signing in...";
+  document.getElementById("loginButton")
+    .addEventListener("click", async () => {
+      const email = document.getElementById("adminEmail").value.trim();
+      const password = document.getElementById("adminPassword").value;
 
-    try {
-      await auth.signInWithEmailAndPassword(email, password);
-    } catch (e) {
-      adminStatus.textContent = "Login failed: " + e.message;
-    }
-  });
+      adminStatus.textContent = "Signing in...";
 
-  document.getElementById("logoutButton").addEventListener("click", () => auth.signOut());
+      try {
+        await auth.signInWithEmailAndPassword(email, password);
+      } catch (e) {
+        adminStatus.textContent = "Login failed: " + e.message;
+      }
+    });
+
+  document.getElementById("logoutButton")
+    .addEventListener("click", () => auth.signOut());
 
   csvFile.addEventListener("change", () => {
     uploadStatus.textContent = csvFile.files.length
@@ -232,6 +251,7 @@
       uploadStatus.textContent = "Please log in as admin first.";
       return;
     }
+
     if (!file) {
       uploadStatus.textContent = "Please select the CSV file first.";
       return;
@@ -242,9 +262,13 @@
 
     try {
       const rows = parseCSV(await file.text());
-      if (rows.length < 2) throw new Error("CSV has no data rows.");
+
+      if (rows.length < 2) {
+        throw new Error("CSV has no data rows.");
+      }
 
       const headers = rows[0];
+
       const records = rows.slice(1)
         .map(row => mapRecord(headers, row))
         .filter(r => r.ds_id || r.ds_Code || r.store_name);
@@ -254,32 +278,45 @@
       }
 
       const missingId = records.find(r => !r.ds_id);
+
       if (missingId) {
         throw new Error("A record has no DS ID. Add a DS ID to every row before uploading.");
       }
+
       const confirmed = confirm(
-        "Upload " + records.length + " records to Firebase? All rows will be stored separately. Keep the same CSV row order when uploading updates."
+        "Upload " + records.length +
+        " records to Firebase? All rows will be stored separately. Keep the same CSV row order when uploading updates."
       );
+
       if (!confirmed) {
         uploadStatus.textContent = "Upload cancelled.";
         return;
       }
 
-      // Batch writes are limited to 500 operations. Use 400 per batch.
+      // Store each CSV row separately to preserve duplicate DS IDs.
+      // Keep CSV row order the same for future updates.
       for (let start = 0; start < records.length; start += 400) {
         const batch = db.batch();
+
         records.slice(start, start + 400).forEach((record, index) => {
-          const ref = db.collection("store_master").doc("csv_" + (start + index));
+          const ref = db.collection("store_master")
+            .doc("csv_" + (start + index));
+
           batch.set(ref, record);
         });
+
         await batch.commit();
+
         uploadStatus.textContent =
           "Uploaded " + Math.min(start + 400, records.length) +
           " of " + records.length + " records...";
       }
 
       await loadStores();
-      uploadStatus.textContent = "Upload complete: " + records.length + " records processed.";
+
+      uploadStatus.textContent =
+        "Upload complete: " + records.length + " records processed.";
+
       csvFile.value = "";
     } catch (e) {
       uploadStatus.textContent = "Upload failed: " + e.message;
@@ -300,3 +337,4 @@
 </script>
 </body>
 </html>
+```
