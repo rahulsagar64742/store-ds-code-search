@@ -5,40 +5,153 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Store & DS Code Search</title>
+
   <style>
-    body { margin:0; padding:16px; font-family:Arial,sans-serif; background:#f2f5fa; color:#172033; }
-    main { max-width:680px; margin:16px auto; padding:20px; background:white; border-radius:12px; }
-    h2 { text-align:center; }
-    input,button { box-sizing:border-box; width:100%; padding:12px; margin:7px 0; font-size:16px; border-radius:7px; }
-    input { border:1px solid #bbb; }
-    button { background:#1769e0; color:white; border:0; cursor:pointer; }
-    hr { margin:24px 0; border:0; border-top:1px solid #ddd; }
-    .result { background:#f5f8ff; padding:14px; border-radius:8px; margin-top:12px; overflow-wrap:anywhere; }
-    .status { color:#555; overflow-wrap:anywhere; }
-    #admin { background:#fafafa; padding:14px; border:1px solid #ddd; border-radius:8px; }
+    body {
+      margin: 0;
+      padding: 16px;
+      font-family: Arial, sans-serif;
+      background: #f2f5fa;
+      color: #172033;
+    }
+
+    main {
+      max-width: 680px;
+      margin: 16px auto;
+      padding: 20px;
+      background: white;
+      border-radius: 12px;
+    }
+
+    h2 { text-align: center; }
+
+    input, button {
+      box-sizing: border-box;
+      width: 100%;
+      padding: 12px;
+      margin: 7px 0;
+      font-size: 16px;
+      border-radius: 7px;
+    }
+
+    input { border: 1px solid #bbb; }
+
+    button {
+      background: #1769e0;
+      color: white;
+      border: 0;
+      cursor: pointer;
+    }
+
+    hr {
+      margin: 24px 0;
+      border: 0;
+      border-top: 1px solid #ddd;
+    }
+
+    .result {
+      background: #f5f8ff;
+      padding: 12px;
+      border-radius: 8px;
+      margin-top: 12px;
+      overflow-wrap: anywhere;
+    }
+
+    .result-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0;
+      border-top: 1px solid #d8e0ee;
+      border-left: 1px solid #d8e0ee;
+    }
+
+    .field {
+      padding: 12px 9px;
+      border-right: 1px solid #d8e0ee;
+      border-bottom: 1px solid #d8e0ee;
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+
+    .field strong {
+      display: block;
+      margin-bottom: 5px;
+      color: #172033;
+    }
+
+    .barcode-area {
+      margin-top: 18px;
+      padding: 12px;
+      text-align: center;
+      background: white;
+      border: 1px solid #d8e0ee;
+      border-radius: 8px;
+    }
+
+    .barcode-area p {
+      font-weight: bold;
+      margin-top: 0;
+    }
+
+    .qr-code {
+      display: flex;
+      justify-content: center;
+      padding: 8px;
+    }
+
+    .status {
+      color: #555;
+      overflow-wrap: anywhere;
+    }
+
+    #admin {
+      background: #fafafa;
+      padding: 14px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+    }
+
+    [hidden] { display: none !important; }
+
+    @media (max-width: 420px) {
+      main { padding: 12px; }
+      .field { padding: 10px 7px; font-size: 14px; }
+    }
   </style>
 </head>
+
 <body>
 <main>
   <h2>Store & DS Code Search</h2>
-  <p>Search by Store Name, DS Code, DS ID or DS Name</p>
-  <input id="searchInput" placeholder="Enter Store Name, DS Code, DS ID or DS Name">
+  <p>Search by Store Name, DS Code or DS ID</p>
+
+  <input id="searchInput"
+         placeholder="Enter Store Name, DS Code or DS ID">
+
   <button id="searchButton">Search</button>
+
   <p id="status" class="status">Connecting to database...</p>
   <div id="results"></div>
 
   <hr>
+
   <section id="admin">
     <h3>Admin — Master Data Upload</h3>
     <p>Admin login is required to upload the CSV file.</p>
+
     <input id="adminEmail" type="email" placeholder="Admin email">
     <input id="adminPassword" type="password" placeholder="Admin password">
+
     <button id="loginButton">Admin Login</button>
     <button id="logoutButton" hidden>Logout</button>
+
     <p id="adminStatus" class="status">Not logged in</p>
+
     <hr>
+
     <label for="csvFile">Choose store_master.csv</label>
     <input id="csvFile" type="file" accept=".csv,text/csv" disabled>
+
     <button id="uploadButton" disabled>Upload Master Data</button>
     <p id="uploadStatus" class="status"></p>
   </section>
@@ -114,12 +227,18 @@
 
     return {
       ds_id: value(["dsid", "storeid"]),
-      ds_name: value(["storename"]),
-      store_name: value(["storename"]),
+      store_name: value(["storename", "dsname"]),
       ds_Code: value(["dscode", "storecode"]),
       bay: value(["bay"]),
       picking_shift: value(["pickingshift", "shift"]),
-      new_xd_remark: value(["newxdremark", "remark", "remarks"]),
+      new_xd_remark: value([
+        "newxdremarks",
+        "newxdremark",
+        "xdremarks",
+        "xdremark",
+        "remark",
+        "remarks"
+      ]),
       pallet_id: value(["palletid"])
     };
   }
@@ -135,6 +254,20 @@
     }
   }
 
+  function addField(container, label, value) {
+    const field = document.createElement("div");
+    field.className = "field";
+
+    const heading = document.createElement("strong");
+    heading.textContent = label + ":";
+
+    const content = document.createElement("span");
+    content.textContent = String(value || "");
+
+    field.append(heading, content);
+    container.appendChild(field);
+  }
+
   function searchStore() {
     const query = searchInput.value.trim().toLowerCase();
     resultsBox.replaceChildren();
@@ -145,12 +278,10 @@
     }
 
     const matches = stores.filter(store =>
-      [
-        store.store_name,
-        store.ds_Code,
-        store.ds_id,
-        store.ds_name
-      ].some(v => String(v || "").toLowerCase().includes(query))
+      [store.store_name, store.ds_Code, store.ds_id]
+        .some(value =>
+          String(value || "").toLowerCase().includes(query)
+        )
     );
 
     if (!matches.length) {
@@ -164,33 +295,41 @@
       const card = document.createElement("div");
       card.className = "result";
 
-      [
-        ["DS Code", store.ds_Code],
-        ["DS ID", store.ds_id],
-        ["DS Name", store.ds_name || store.store_name],
-        ["Bay", store.bay],
-        ["Picking Shift", store.picking_shift],
-        ["Pallet ID", store.pallet_id],
-        ["Remark", store.new_xd_remark]
-      ].forEach(([label, value]) => {
-        if (value !== undefined && value !== null && value !== "") {
-          const p = document.createElement("p");
-          const b = document.createElement("strong");
-          b.textContent = label + ": ";
-          p.append(b, document.createTextNode(String(value)));
-          card.appendChild(p);
-        }
-      });
+      const grid = document.createElement("div");
+      grid.className = "result-grid";
+
+      addField(grid, "DS Code", store.ds_Code);
+      addField(grid, "DS ID", store.ds_id);
+      addField(grid, "Store Name", store.store_name);
+      addField(grid, "Bay", store.bay);
+      addField(grid, "Picking Shift", store.picking_shift);
+      addField(grid, "Pallet ID", store.pallet_id);
+      addField(
+        grid,
+        "new_xd_remarks",
+        store.new_xd_remark || store.new_xd_remarks
+      );
+
+      card.appendChild(grid);
 
       if (store.pallet_id) {
+        const barcodeArea = document.createElement("div");
+        barcodeArea.className = "barcode-area";
+
+        const title = document.createElement("p");
+        title.textContent = "Pallet ID 2D Barcode";
+
         const qr = document.createElement("div");
+        qr.className = "qr-code";
         qr.id = "qr-" + index;
-        card.appendChild(qr);
+
+        barcodeArea.append(title, qr);
+        card.appendChild(barcodeArea);
 
         new QRCode(qr, {
           text: String(store.pallet_id),
-          width: 150,
-          height: 150
+          width: 160,
+          height: 160
         });
       }
 
@@ -277,15 +416,13 @@
         throw new Error("No records found. Please check your CSV column headings.");
       }
 
-      const missingId = records.find(r => !r.ds_id);
-
-      if (missingId) {
+      if (records.some(r => !r.ds_id)) {
         throw new Error("A record has no DS ID. Add a DS ID to every row before uploading.");
       }
 
       const confirmed = confirm(
         "Upload " + records.length +
-        " records to Firebase? All rows will be stored separately. Keep the same CSV row order when uploading updates."
+        " records to Firebase? Rows will be stored separately. Keep the same CSV row order for future updates."
       );
 
       if (!confirmed) {
@@ -293,8 +430,6 @@
         return;
       }
 
-      // Store each CSV row separately to preserve duplicate DS IDs.
-      // Keep CSV row order the same for future updates.
       for (let start = 0; start < records.length; start += 400) {
         const batch = db.batch();
 
