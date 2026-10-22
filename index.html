@@ -362,6 +362,68 @@
     };
   }
 
+  function validateCSVRows(rows) {
+    if (rows.length < 2) {
+      throw new Error("CSV has no data rows. Please select a CSV with a header row and at least one record.");
+    }
+
+    const headers = rows[0];
+    const requiredColumns = [
+      { label: "DS ID", aliases: ["dsid", "storeid"] },
+      { label: "Store Name", aliases: ["storename", "dsname"] },
+      { label: "DS Code", aliases: ["dscode", "storecode"] },
+      { label: "Bay", aliases: ["bay"] },
+      { label: "Picking Shift", aliases: ["pickingshift", "shift"] },
+      { label: "new_xd_remarks", aliases: ["newxdremarks"] },
+      { label: "Pallet ID", aliases: ["palletid"] }
+    ];
+
+    const missingColumns = requiredColumns
+      .filter(column => mapHeader(headers, column.aliases) < 0)
+      .map(column => column.label);
+
+    if (missingColumns.length) {
+      throw new Error(
+        "Missing required CSV column(s): " + missingColumns.join(", ") +
+        ". Please use the standard store_master.csv headers."
+      );
+    }
+
+    const records = rows.slice(1)
+      .map(row => mapRecord(headers, row))
+      .filter(record =>
+        record.ds_id || record.ds_Code || record.store_name ||
+        record.bay || record.picking_shift || record.new_xd_remark ||
+        record.pallet_id
+      );
+
+    if (!records.length) {
+      throw new Error("No records found. Please check your CSV data.");
+    }
+
+    const missingIds = records
+      .map((record, index) => record.ds_id ? null : index + 2)
+      .filter(lineNumber => lineNumber !== null);
+
+    if (missingIds.length) {
+      const shownLines = missingIds.slice(0, 10).join(", ");
+      const more = missingIds.length > 10
+        ? " (and " + (missingIds.length - 10) + " more)"
+        : "";
+      throw new Error(
+        "DS ID is blank on CSV row(s): " + shownLines + more +
+        ". Please fill in every DS ID before uploading."
+      );
+    }
+
+    return records;
+  }
+
+  async function getCsvManagedDocs() {
+    const snapshot = await db.collection("store_master").get();
+    return snapshot.docs.filter(doc => /^csv_\d+$/.test(doc.id));
+  }
+
   async function loadStores() {
     try {
       const snapshot = await db.collection("store_master").get();
@@ -541,36 +603,31 @@ updateMasterToggle.addEventListener("click", function () {
     }
 
     uploadButton.disabled = true;
-    uploadStatus.textContent = "Reading CSV...";
+    csvFile.disabled = true;
+    uploadStatus.textContent = "Checking CSV file...";
 
     try {
       const rows = parseCSV(await file.text());
-
-      if (rows.length < 2) {
-        throw new Error("CSV has no data rows.");
-      }
-
-      const headers = rows[0];
-
-      const records = rows.slice(1)
-        .map(row => mapRecord(headers, row))
-        .filter(r => r.ds_id || r.ds_Code || r.store_name);
-
-      if (!records.length) {
-        throw new Error("No records found. Please check your CSV column headings.");
-      }
-
-      if (records.some(r => !r.ds_id)) {
-        throw new Error("A record has no DS ID. Add a DS ID to every row before uploading.");
-      }
+      const records = validateCSVRows(rows);
+      const existingCsvDocs = await getCsvManagedDocs();
+      const staleDocs = existingCsvDocs.filter(doc => {
+        const index = Number(doc.id.slice(4));
+        return Number.isInteger(index) && index >= records.length;
+      });
 
       const confirmed = confirm(
-        "Upload " + records.length +
-        " records to Firebase? Rows will be stored separately. Keep the same CSV row order for future updates."
+        "CSV validation passed.\\n\\n" +
+        "Records to upload: " + records.length + "\\n" +
+        "Existing CSV-managed records: " + existingCsvDocs.length + "\\n" +
+        "Old extra CSV records to remove: " + staleDocs.length + "\\n\\n" +
+        "Continue? Existing csv_N records will be replaced with this CSV. " +
+        "Extra csv_N records will be removed. Other documents are untouched. " +
+        "Duplicate DS IDs are allowed and will remain separate rows. " +
+        "Keep the same CSV row order for future updates."
       );
 
       if (!confirmed) {
-        uploadStatus.textContent = "Upload cancelled.";
+        uploadStatus.textContent = "Upload cancelled. No data was changed.";
         return;
       }
 
@@ -580,26 +637,44 @@ updateMasterToggle.addEventListener("click", function () {
         records.slice(start, start + 400).forEach((record, index) => {
           const ref = db.collection("store_master")
             .doc("csv_" + (start + index));
-
           batch.set(ref, record);
         });
 
         await batch.commit();
-
         uploadStatus.textContent =
-          "Uploaded " + Math.min(start + 400, records.length) +
-          " of " + records.length + " records...";
+          "Uploading records: " +
+          Math.min(start + 400, records.length) + " of " + records.length + "...";
+      }
+
+      for (let start = 0; start < staleDocs.length; start += 400) {
+        const batch = db.batch();
+        staleDocs.slice(start, start + 400).forEach(doc => batch.delete(doc.ref));
+        await batch.commit();
+        uploadStatus.textContent = "Removing old extra CSV records...";
+      }
+
+      uploadStatus.textContent = "Verifying uploaded records...";
+      const verifiedDocs = await getCsvManagedDocs();
+
+      if (verifiedDocs.length !== records.length) {
+        throw new Error(
+          "Verification mismatch: CSV has " + records.length +
+          " records, but Firebase has " + verifiedDocs.length +
+          " CSV-managed records. Please check the data before uploading again."
+        );
       }
 
       await loadStores();
 
       uploadStatus.textContent =
-        "Upload complete: " + records.length + " records processed.";
+        "Success! " + verifiedDocs.length +
+        " records uploaded and verified. Duplicate DS IDs were preserved.";
 
       csvFile.value = "";
     } catch (e) {
       uploadStatus.textContent = "Upload failed: " + e.message;
     } finally {
+      csvFile.disabled = !auth.currentUser;
       uploadButton.disabled = !auth.currentUser;
     }
   });
